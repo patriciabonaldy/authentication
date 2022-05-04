@@ -1,8 +1,9 @@
 package postgres
 
 import (
-	"github.com/patriciabonaldy/authentication/internal"
 	"time"
+
+	"github.com/patriciabonaldy/authentication/internal"
 )
 
 // User is the data type for user object

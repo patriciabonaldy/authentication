@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/patriciabonaldy/authentication/internal"
-
 	"github.com/hashicorp/go-hclog"
 	"github.com/jmoiron/sqlx"
 	uuid "github.com/satori/go.uuid"
+
+	"github.com/patriciabonaldy/authentication/internal"
 )
 
 // Repository has the implementation of the db methods.
