@@ -2,14 +2,8 @@ package internal
 
 import (
 	"context"
+	"github.com/pkg/errors"
 	"time"
-)
-
-type VerificationDataType int
-
-const (
-	MailConfirmation VerificationDataType = iota + 1
-	PassReset
 )
 
 // Repository is an interface for the storage implementation of the auth service
@@ -24,6 +18,22 @@ type Repository interface {
 	DeleteVerificationData(ctx context.Context, email string, verificationDataType VerificationDataType) error
 	UpdatePassword(ctx context.Context, userID string, password string, tokenHash string) error
 }
+
+var (
+	ErrUserNotFound       = errors.New("no user account exists with given email. Please sign in first")
+	ErrUserAlreadyExists  = errors.New("user already exists with the given email")
+	ErrUserCreationFailed = errors.New("unable to create user.Please try again later")
+	ErrUserVerifyFailed   = errors.New("user account is not verified")
+	ErrGenerateToken      = errors.New("error generating access token")
+	ErrInvalidPassword    = errors.New("Invalid password")
+)
+
+const (
+	MailConfirmation VerificationDataType = iota + 1
+	PassReset
+)
+
+type VerificationDataType int
 
 // User is the data type for user object
 type User struct {
