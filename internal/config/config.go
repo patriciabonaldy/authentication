@@ -13,6 +13,7 @@ type Token struct {
 	RefreshTokenPrivateKeyPath string `env:"REFRESH_TOKEN_PRIVATE_KEY_PATH"`
 	RefreshTokenPublicKeyPath  string `env:"REFRESH_TOKEN_PUBLIC_KEY_PATH"`
 	JwtExpiration              int    `env:"JWT_EXPIRATION"` // in minutes
+	Issuer                     string `env:"ISSUER"`
 }
 
 type DB struct {
@@ -29,15 +30,16 @@ type Mail struct {
 	PassResetCodeExpiration int    `env:"PASSWORD_RESET_CODE_EXPIRATION"`    // in minutes `env:"DATABASE_DSN"`
 	MailVerifTemplateID     string `env:"MAIL_VERIFICATION_TEMPLATE_ID"`
 	PassResetTemplateID     string `env:"PASSWORD_RESET_TEMPLATE_ID"`
+	Name                    string `env:"NAME_EMAIL"`
+	SendGridAPIKey          string `env:"SENDGRID_API_KEY"`
 }
 
 // Config wraps all the config variables required by the auth service
 type Config struct {
-	ServerAddress  string `env:"SERVER_ADDRESS"`
-	DB             DB
-	Token          Token
-	SendGridAPIKey string `env:"SENDGRID_API_KEY"`
-	Mail           Mail
+	ServerAddress string `env:"SERVER_ADDRESS"`
+	DB            DB
+	Token         Token
+	Mail          Mail
 }
 
 // New initializes the config loading the configurations from environment
