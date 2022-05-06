@@ -1,87 +1,133 @@
 package handlers
 
 import (
-	"fmt"
-
-	"github.com/d-vignesh/go-jwt-auth/data"
-	"github.com/d-vignesh/go-jwt-auth/service"
-	"github.com/d-vignesh/go-jwt-auth/utils"
-	"github.com/hashicorp/go-hclog"
+	"github.com/gin-gonic/gin"
+	"github.com/patriciabonaldy/authentication/internal"
+	"github.com/patriciabonaldy/authentication/internal/authentication"
+	"github.com/patriciabonaldy/authentication/internal/config"
+	"github.com/patriciabonaldy/authentication/internal/platform/logger"
+	"github.com/pkg/errors"
+	"net/http"
 )
-
-// UserKey is used as a key for storing the User object in context at middleware
-type UserKey struct{}
-
-// UserIDKey is used as a key for storing the UserID in context at middleware
-type UserIDKey struct{}
-
-// VerificationDataKey is used as the key for storing the VerificationData in context at middleware
-type VerificationDataKey struct{}
 
 // AuthHandler wraps instances needed to perform operations on user object
 type AuthHandler struct {
-	logger      hclog.Logger
-	configs     *utils.Configurations
-	validator   *data.Validation
-	repo        data.Repository
-	authService service.Authentication
-	mailService service.MailService
+	logger      logger.Logger
+	configs     *config.Config
+	authService authentication.Authentication
 }
 
-// NewAuthHandler returns a new UserHandler instance
-func NewAuthHandler(l hclog.Logger, c *utils.Configurations, v *data.Validation, r data.Repository, auth service.Authentication, mail service.MailService) *AuthHandler {
+// New returns a new UserHandler instance
+func New(l logger.Logger, c *config.Config, auth authentication.Authentication) *AuthHandler {
 	return &AuthHandler{
 		logger:      l,
 		configs:     c,
-		validator:   v,
-		repo:        r,
 		authService: auth,
-		mailService: mail,
 	}
 }
 
-// GenericResponse is the format of our response
-type GenericResponse struct {
-	Status  bool        `json:"status"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data"`
+type userKey struct{}
+
+func (ah *AuthHandler) Login() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		var req UserRequest
+		if err := ctx.BindJSON(&req); err != nil {
+			ctx.JSON(http.StatusBadRequest, err.Error())
+			return
+		}
+
+		user := toUser(req)
+		accessToken, refreshToken, err := ah.authService.Login(ctx, user)
+		if err != nil {
+			ah.logger.Error("error fetching the user", "error", err)
+			switch err {
+			case internal.ErrUserNotFound, internal.ErrUserVerifyFailed, internal.ErrInvalidPassword:
+				ctx.JSON(http.StatusBadRequest, &GenericResponse{
+					Status:  false,
+					Message: err.Error(),
+				})
+			default:
+				ctx.JSON(http.StatusInternalServerError, &GenericResponse{
+					Status:  false,
+					Message: "Unable to login. Please try again later",
+				})
+			}
+
+			return
+		}
+
+		ah.logger.Info("successfully generated token", "accesstoken", accessToken, "refreshtoken", refreshToken)
+		ctx.JSON(http.StatusCreated, &GenericResponse{
+			Status:  true,
+			Message: "Successfully logged in",
+			Data:    &AuthResponse{AccessToken: accessToken, RefreshToken: refreshToken, Username: user.Username},
+		})
+
+	}
 }
 
-// ValidationError is a collection of validation error messages
-type ValidationError struct {
-	Errors []string `json:"errors"`
+// Signup handles signup request
+func (ah *AuthHandler) Signup() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		var req UserRequest
+		if err := ctx.BindJSON(&req); err != nil {
+			ctx.JSON(http.StatusBadRequest, err.Error())
+			return
+		}
+
+		user := toUser(req)
+		err := ah.authService.Signup(ctx, user)
+		if err != nil {
+			if errors.Is(err, internal.ErrUserNotFound) {
+				ctx.JSON(http.StatusBadRequest, &GenericResponse{
+					Status:  false,
+					Message: internal.ErrUserNotFound.Error(),
+				})
+
+				return
+			}
+
+			ctx.JSON(http.StatusInternalServerError, &GenericResponse{
+				Status:  false,
+				Message: "Unable to retrieve user from database.Please try again later",
+			})
+
+			return
+		}
+
+		ctx.JSON(http.StatusCreated, &GenericResponse{
+			Status:  true,
+			Message: "Please verify your email account using the confirmation code send to your mail",
+		})
+	}
 }
 
-// TokenResponse data types are used for encoding and decoding b/t go types and json
-type TokenResponse struct {
-	RefreshToken string `json:"refresh_token"`
-	AccessToken  string `json:"access_token"`
+// RefreshToken handles refresh token request
+func (ah *AuthHandler) RefreshToken() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		var req UserRequest
+		if err := ctx.BindJSON(&req); err != nil {
+			ctx.JSON(http.StatusBadRequest, err.Error())
+			return
+		}
+
+		user := toUser(req)
+		accessToken, err := ah.authService.RefreshToken(ctx, user)
+		if err != nil {
+			ah.logger.Error("unable to generate access token", "error", err)
+			ctx.JSON(http.StatusInternalServerError, &GenericResponse{
+				Status:  false,
+				Message: "Unable to generate access token.Please try again later",
+			})
+
+			return
+		}
+
+		ctx.JSON(http.StatusCreated, &GenericResponse{
+			Status:  true,
+			Message: "Successfully generated new access token",
+			Data:    &TokenResponse{AccessToken: accessToken},
+		})
+	}
 }
 
-type AuthResponse struct {
-	RefreshToken string `json:"refresh_token"`
-	AccessToken  string `json:"access_token"`
-	Username     string `json:"username"`
-}
-
-type UsernameUpdate struct {
-	Username string `json:"username"`
-}
-
-type CodeVerificationReq struct {
-	Code string `json: "code"`
-	Type string `json" "type"`
-}
-
-type PasswordResetReq struct {
-	Password   string `json: "password"`
-	PasswordRe string `json: "password_re"`
-	Code       string `json: "code"`
-}
-
-var ErrUserAlreadyExists = fmt.Sprintf("User already exists with the given email")
-var ErrUserNotFound = fmt.Sprintf("No user account exists with given email. Please sign in first")
-var UserCreationFailed = fmt.Sprintf("Unable to create user.Please try again later")
-
-var PgDuplicateKeyMsg = "duplicate key value violates unique constraint"
-var PgNoRowsMsg = "no rows in result set"
